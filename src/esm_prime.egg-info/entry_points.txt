@@ -1,0 +1,3 @@
+[console_scripts]
+prime = cli:main
+prime-train = train:main
