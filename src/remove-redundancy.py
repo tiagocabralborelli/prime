@@ -6,7 +6,7 @@ def run_cdhit(fasta_path, identity_threshold, output_path):
         "-i", fasta_path,
         "-o", output_path,
         "-c", str(identity_threshold),
-        "-aS 0.8"    #默认无限制
+        "-aS","0.8",  #默认无限制
         "-g", "1",   # 精确模式
         "-d", "0",   # 仅保留序列 ID
         "-l", "4",  # 最小序列长度（按需调整）
