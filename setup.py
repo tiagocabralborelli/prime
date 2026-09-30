@@ -8,8 +8,8 @@ setup(
     entry_points={
         "console_scripts": [
             "prime = cli:main",
-            "prime-train = train:main",
-            "prime-predict = Inference.predict:main",
+            "prime-train =  train:main",
+            "prime-predict = predict:main",
         ]
     }
 )

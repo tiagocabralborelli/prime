@@ -1,3 +1,4 @@
 [console_scripts]
 prime = cli:main
+prime-predict = predict:main
 prime-train = train:main
