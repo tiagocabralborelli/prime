@@ -1,6 +1,7 @@
 import pandas as pd
 import torch
 import numpy as np
+from contextlib import nullcontext
 from sklearn.base import clone
 from transformers import EsmTokenizer, EsmForMaskedLM
 
@@ -12,7 +13,7 @@ except ImportError:
 
 class EmbeddingExtractor:
     def __init__(self, path, device):
-        self.device = device
+        self.device = torch.device(device)
         self.check_point = path
 
     def loadModel(self, tokenizer, model_loader):
@@ -33,7 +34,8 @@ class EmbedderESM(EmbeddingExtractor):
             inputs = self._tokenizer(batch, return_tensors='pt', padding=True,
                                     truncation=True, max_length=self.max_len).to(self.device)
             with torch.no_grad():
-                with torch.cuda.amp.autocast():
+                autocast_context = torch.cuda.amp.autocast() if self.device.type == 'cuda' else nullcontext()
+                with autocast_context:
                     outputs = self._base_model(**inputs, output_hidden_states=True)
                     hidden = outputs.hidden_states[-1]
                     mask = inputs.attention_mask.unsqueeze(-1)
@@ -70,3 +72,20 @@ class EmbedderLoRAESM(EmbeddingExtractor):
 
         if name is not None:
             self.model_name = name
+
+    def embedding(self, sequences, batch_size = 128):
+        embeddings = []
+        for i in range(0, len(sequences), batch_size):
+            batch = sequences[i:i+batch_size]
+            inputs = self._tokenizer(batch, return_tensors='pt', padding=True,
+                                    truncation=True, max_length=self.max_len).to(self.device)
+            with torch.no_grad():
+                autocast_context = torch.cuda.amp.autocast() if self.device.type == 'cuda' else nullcontext()
+                with autocast_context:
+                    outputs = self._base_model(**inputs, output_hidden_states=True)
+                    hidden = outputs.hidden_states[-1]
+                    mask = inputs.attention_mask.unsqueeze(-1)
+                    pooled = (hidden * mask).sum(1) / mask.sum(1).clamp(min=1e-9)
+            embeddings.append(pooled.cpu().numpy())
+        self._embeddings =  np.vstack(embeddings)
+        return self._embeddings

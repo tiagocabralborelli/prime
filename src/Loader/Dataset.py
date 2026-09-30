@@ -70,6 +70,12 @@ class LoadFasta:
                 self._clean_test_seqs.append(s)
                 self.clean_test_labels.append(l)
 
+        self.train_seq = self._clean_train_seq
+        self.train_id = np.asarray(self._clean_train_labels)
+        self.test_seq = self._clean_test_seqs
+        self.test_id = np.asarray(self.clean_test_labels)
+        
+
 class DataSet(LoadFasta):
     def load(self,sample):
         super().load(sample)

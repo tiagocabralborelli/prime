@@ -39,6 +39,7 @@ from sklearn.neural_network import MLPClassifier, MLPRegressor
 from sklearn.base import clone, BaseEstimator, RegressorMixin
 from sklearn.isotonic import IsotonicRegression
 from imblearn.over_sampling import SMOTE
+from Metrics.Calculator import bootstrap_metrics
 
 import logging
 def ConfigureLogging(FileName):
@@ -90,13 +91,14 @@ def parse_uncertainty(uncertainty_dict):
             for metric_name, value in metrics.items():
                 grouped_values[prop_name][metric_name].append(value)
     stats_results = {}
-    for prop_name, metrics in grouped_values.items():if use_smote:
+    for prop_name, metrics in grouped_values.items():
         stats_results[prop_name] = {}
         for metric_name, values in metrics.items():
             mean = np.mean(values)
             std = np.std(values)
             stats_results[prop_name][metric_name] = {'mean': mean, 'std': std}
             logging.info(f"  {metric_name.upper():<10}: {mean:.4f} ± {std:.9f}")
+    return stats_results
 
 def filter_sequence(seq):
     seq_upper = seq.upper()
@@ -703,39 +705,6 @@ def train_regression(property_name, train_seqs, train_labels, test_seqs, test_la
 # ============================================================================
 # 5. HELPER FUNCTIONS (bootstrap, plots)
 # ============================================================================
-
-def bootstrap_metrics(y_true, y_pred, y_prob=None, n_bootstrap=1000, ci=95):
-    np.random.seed(42)
-    n = len(y_true)
-    indices = np.arange(n)
-    auc_list, ap_list, acc_list, prec_list, rec_list, f1_list, mcc_list = [], [], [], [], [], [], []
-    for _ in range(n_bootstrap):
-        boot_idx = np.random.choice(indices, size=n, replace=True)
-        y_true_boot = y_true[boot_idx]
-        y_pred_boot = y_pred[boot_idx]
-        acc_list.append(accuracy_score(y_true_boot, y_pred_boot))
-        prec_list.append(precision_score(y_true_boot, y_pred_boot, zero_division=0))
-        rec_list.append(recall_score(y_true_boot, y_pred_boot, zero_division=0))
-        f1_list.append(f1_score(y_true_boot, y_pred_boot, zero_division=0))
-        mcc_list.append(matthews_corrcoef(y_true_boot, y_pred_boot))
-        if y_prob is not None:
-            y_prob_boot = y_prob[boot_idx]
-            auc_list.append(roc_auc_score(y_true_boot, y_prob_boot))
-            ap_list.append(average_precision_score(y_true_boot, y_prob_boot))
-    def ci_str(vals):
-        low = np.percentile(vals, (100-ci)/2)
-        high = np.percentile(vals, 100 - (100-ci)/2)
-        return f"{np.mean(vals):.4f} [{low:.4f}-{high:.4f}]"
-    res = {}
-    if y_prob is not None:
-        res['auc'] = ci_str(auc_list)
-        res['ap'] = ci_str(ap_list)
-    res['accuracy'] = ci_str(acc_list)
-    res['precision'] = ci_str(prec_list)
-    res['recall'] = ci_str(rec_list)
-    res['f1'] = ci_str(f1_list)
-    res['mcc'] = ci_str(mcc_list)
-    return res
 
 # Plotting functions (all with plt.close('all'))
 def plot_roc_curve(y_true, y_prob, prop_name, out_dir, suffix=""):
