@@ -1,4 +1,5 @@
 [console_scripts]
-prime = cli:main
-prime-predict = predict:main
-prime-train = train:main
+prime-predict = Predict:main
+prime-process = Clean:main
+prime-train = Train:main
+prime-uncertainty = Uncert:main

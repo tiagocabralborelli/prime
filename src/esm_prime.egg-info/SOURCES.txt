@@ -8,6 +8,8 @@ src/Loader/Dataset.py
 src/Loader/__init__.py
 src/Metrics/Calculator.py
 src/Metrics/__init__.py
+src/Process/Quality.py
+src/Process/__init__.py
 src/esm_prime.egg-info/PKG-INFO
 src/esm_prime.egg-info/SOURCES.txt
 src/esm_prime.egg-info/dependency_links.txt

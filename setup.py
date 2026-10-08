@@ -7,9 +7,10 @@ setup(
     packages=find_packages(where="src"),
     entry_points={
         "console_scripts": [
-            "prime = cli:main",
-            "prime-train =  train:main",
-            "prime-predict = predict:main",
+            "prime-train =  Train:main",
+            "prime-predict = Predict:main",
+            "prime-uncertainty = Uncert:main",
+            "prime-process = Clean:main", 
         ]
     }
 )

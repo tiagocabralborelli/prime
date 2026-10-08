@@ -122,5 +122,3 @@ def plot_binary_evaluation(y_true, y_pred, y_prob, output_dir, name):
     for extension in ('png', 'svg'):
         plt.savefig(os.path.join(output_dir, f'{name}_confusion_matrix.{extension}'))
     plt.close()
-
-    def Scoring()

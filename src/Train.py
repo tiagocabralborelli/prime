@@ -22,6 +22,17 @@ from sklearn.linear_model import LogisticRegression
 from sklearn.neural_network import MLPClassifier
 import numpy as np
 
+
+from pathlib import Path
+import yaml
+
+config_path = Path(__file__).with_name("Params.yaml")
+with config_path.open("r", encoding="utf-8") as file:
+    config = yaml.safe_load(file)
+
+train_config = config["train"]
+
+
 def select_best_classifier(cv_models,cv_scores, mode):
     if mode == "auto":
         best_name = max(cv_scores, key=cv_scores.get)
@@ -118,7 +129,7 @@ def get_package_versions():
 @click.option('--output-dir', default='results', show_default=True,
               help='Directory for evaluation plots')
 
-def main(train, test, name, base_model, seed=42, smote=False,
+def main(train, test, name, base_model, seed=train_config["seed"], smote=False,
          device='cuda' if torch.cuda.is_available() else 'cpu', model_dir='saved_models',
          embedding_cache_dir='embedding_cache', output_dir='results'):
     #Hard-coded parameters
@@ -183,6 +194,7 @@ def main(train, test, name, base_model, seed=42, smote=False,
 
     os.makedirs(model_dir, exist_ok=True)
     model_path = os.path.join(model_dir, f'{name}_model.pkl')
+    
     artifact = {
         'artifact_version': 1,
         'task_type': 'binary_classification',

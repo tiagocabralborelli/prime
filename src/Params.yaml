@@ -1,0 +1,16 @@
+clean:
+  cdhit:
+    id_threshold: 0.7
+  split:
+    test_size: 0.1
+    random_state: 42
+  blast:
+      task: blastp-short
+      evalue: 1.0e-5
+      word_size: 3
+      seg: "no"
+      num_threads: 4
+      max_target_seqs: 5
+
+train:
+  seed: 42

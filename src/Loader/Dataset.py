@@ -14,7 +14,7 @@ def filter_sequence(seq):
     return True
 
 class LoadFasta:
-    def __init__(self, train,test,name):
+    def __init__(self, train, test, name):
         if not isinstance(train, str) or not isinstance(test, str):
             raise TypeError("Input must be a string path to a FASTA file.")
         self.train = train
@@ -35,7 +35,7 @@ class LoadFasta:
             for record in SeqIO.parse(self.train, "fasta"):
                 if filter_sequence(str(record.seq)):
                     train_seq.append(str(record.seq).upper())
-                    train_id.append(float(str(record.id).upper().split('|')[-1]))
+                    train_id.append(float(str(record.id).upper().split('>')[-1]))
                 else:
                     print(f"  Warning: Skipping sequence with invalid AA in the training: {record.id}")
 
@@ -43,7 +43,7 @@ class LoadFasta:
             for record in SeqIO.parse(self.test, "fasta"):
                 if filter_sequence(str(record.seq)):
                     test_seq.append(str(record.seq).upper())
-                    test_id.append(float(str(record.id).upper().split('|')[-1]))
+                    test_id.append(float(str(record.id).upper().split('>')[-1]))
                     print(f"  Warning: Skipping sequence with invalid AA in the test set: {record.id}")
 
             self.train_id  = np.array(train_id)
