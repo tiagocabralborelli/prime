@@ -1,6 +1,7 @@
 README.md
 setup.py
 src/Coach/Classifiers.py
+src/Coach/TorchModels.py
 src/Coach/__init__.py
 src/Embedder/Extractor.py
 src/Embedder/__init__.py

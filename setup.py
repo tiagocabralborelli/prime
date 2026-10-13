@@ -10,6 +10,7 @@ setup(
             "prime-train =  Train:main",
             "prime-predict = Predict:main",
             "prime-uncertainty = Uncert:main",
+            "prime-torchuncert = UncertTorch:main",
             "prime-process = Clean:main", 
         ]
     }
