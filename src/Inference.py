@@ -1,6 +1,15 @@
 #!/usr/bin/env python3
+"""
+Inference.py - Multi-Model Ensemble CLI for Peptide Property Prediction.
+
+Loads 15 trained models per feature (e.g., Allergen, Antimicrobial, Fouling, Hemolitic, Toxicity)
+and calculates the ensemble mean probability (and optional uncertainty / binary prediction)
+for each peptide in the input FASTA file.
+"""
+
 import csv
 import os
+import pickle
 from collections import defaultdict
 from pathlib import Path
 
@@ -15,12 +24,12 @@ from Loader.Dataset import filter_sequence
 
 
 def get_feature_name(filename):
-    """Retorna o nome da feature a partir do nome do arquivo .pkl (ex: Antimicrobial_... -> Antimicrobial)."""
+    """Returns the feature name extracted from the .pkl model filename (e.g. Antimicrobial_... -> Antimicrobial)."""
     return os.path.basename(filename).split("_")[0]
 
 
 def run_inference_on_model(artifact, embeddings, device):
-    """Executa a predição para um artefato carregado."""
+    """Runs inference for a loaded model artifact."""
     scaler = artifact["scaler"]
     scaled_embeddings = scaler.transform(embeddings)
 
@@ -31,21 +40,24 @@ def run_inference_on_model(artifact, embeddings, device):
 
     positive_label = artifact["positive_label"]
     classes = np.asarray(model.classes_)
-    pos_idx = int(np.flatnonzero(classes == positive_label)[0])
+    pos_indices = np.flatnonzero(classes == positive_label)
+    if len(pos_indices) != 1:
+        raise ValueError("Positive label not uniquely found in classifier classes.")
+    pos_idx = int(pos_indices[0])
 
     probs = model.predict_proba(scaled_embeddings)[:, pos_idx]
     threshold = float(artifact.get("threshold", 0.5))
     return probs, threshold
 
 
-@click.command()
+@click.command(help="PRIME Multi-Model Ensemble Inference CLI.")
 @click.option(
     "--input",
     "-i",
     "input_file",
     required=True,
     type=click.Path(exists=True, dir_okay=False),
-    help="Caminho do arquivo FASTA de entrada.",
+    help="Path to input FASTA file containing peptides to analyze.",
 )
 @click.option(
     "--model_dir",
@@ -53,7 +65,7 @@ def run_inference_on_model(artifact, embeddings, device):
     "model_dir",
     required=True,
     type=click.Path(exists=True, file_okay=False),
-    help="Pasta onde os arquivos .pkl dos modelos estão localizados.",
+    help="Directory containing the trained .pkl model files.",
 )
 @click.option(
     "--output",
@@ -62,7 +74,7 @@ def run_inference_on_model(artifact, embeddings, device):
     default="predictions.csv",
     show_default=True,
     type=click.Path(dir_okay=False),
-    help="Caminho do arquivo CSV de saída.",
+    help="Path to output CSV file for saving predictions.",
 )
 @click.option(
     "--device",
@@ -71,7 +83,7 @@ def run_inference_on_model(artifact, embeddings, device):
     default="cpu",
     show_default=True,
     type=click.Choice(["cpu", "cuda", "gpu"], case_sensitive=False),
-    help="Dispositivo de execução ('cpu' ou 'cuda'/'gpu').",
+    help="Execution device ('cpu' or 'cuda'/'gpu').",
 )
 @click.option(
     "--checkpoint",
@@ -79,7 +91,7 @@ def run_inference_on_model(artifact, embeddings, device):
     "checkpoint",
     default="/data/tiago/prime-validation/checkpoint-500000",
     show_default=True,
-    help="Caminho do checkpoint do modelo ESM.",
+    help="Path to base ESM model checkpoint directory.",
 )
 @click.option(
     "--include_pred",
@@ -87,7 +99,7 @@ def run_inference_on_model(artifact, embeddings, device):
     "include_pred",
     is_flag=True,
     default=False,
-    help="Inclui coluna de predição binária (0/1) no CSV.",
+    help="Include binary prediction column (0/1) based on average threshold.",
 )
 @click.option(
     "--include_std",
@@ -95,7 +107,7 @@ def run_inference_on_model(artifact, embeddings, device):
     "include_std",
     is_flag=True,
     default=False,
-    help="Inclui coluna de desvio padrão (incerteza) no CSV.",
+    help="Include standard deviation column (epistemic uncertainty across seeds).",
 )
 def main(
     input_file,
@@ -109,36 +121,50 @@ def main(
     device_name = "cuda" if device.lower() in ["cuda", "gpu"] and torch.cuda.is_available() else "cpu"
     target_device = torch.device(device_name)
 
-    # Garante que pickles criados no CUDA possam ser lidos em CPU sem erro
+    # Ensure CUDA-saved models can be unpickled cleanly on CPU
     if device_name == "cpu":
         torch.serialization.default_restore_location = lambda storage, loc: storage
 
-    # 1. Leitura do FASTA
+    click.echo("=" * 60)
+    click.echo("PRIME Multi-Model Ensemble Inference CLI")
+    click.echo("=" * 60)
+    click.echo(f"• Input FASTA: {input_file}")
+    click.echo(f"• Models directory: {model_dir}")
+    click.echo(f"• Output CSV: {output_file}")
+    click.echo(f"• Checkpoint: {checkpoint}")
+    click.echo(f"• Device: {device_name}")
+    click.echo("=" * 60)
+
+    # 1. Parse and filter FASTA sequences
     records = []
+    skipped = 0
     for record in SeqIO.parse(input_file, "fasta"):
         seq = str(record.seq).upper()
         if seq and filter_sequence(seq):
             records.append((str(record.id), seq))
+        else:
+            skipped += 1
 
     if not records:
-        raise click.ClickException("Nenhuma sequência válida encontrada no arquivo FASTA.")
+        raise click.ClickException("No valid peptide sequences found in FASTA file.")
 
     sequences = [seq for _, seq in records]
-    print(f"Carregados {len(records)} peptídeos de {input_file}.")
+    click.echo(f"Loaded {len(records)} valid peptides from {input_file} ({skipped} skipped).")
 
-    # 2. Extração dos embeddings na memória via ESM
-    print(f"Extraindo embeddings com ESM de {checkpoint} ({device_name})...")
+    # 2. Extract embeddings in-memory using ESM
+    click.echo(f"Extracting embeddings using ESM from {checkpoint} ({device_name})...")
     extractor = EmbedderLoRAESM(path=checkpoint, device=device_name)
     extractor.loadModel(tokenizer=EsmTokenizer, model_loader=EsmForMaskedLM)
     embeddings = extractor.embedding(sequences)
     del extractor
     if torch.cuda.is_available():
         torch.cuda.empty_cache()
+    click.echo(f"Embeddings extracted: shape {embeddings.shape}")
 
-    # 3. Agrupamento dos modelos .pkl por feature
+    # 3. Group models by feature
     model_paths = sorted(Path(model_dir).glob("*.pkl"))
     if not model_paths:
-        raise click.ClickException(f"Nenhum arquivo .pkl encontrado em {model_dir}")
+        raise click.ClickException(f"No .pkl model files found in {model_dir}")
 
     feature_models = defaultdict(list)
     for path in model_paths:
@@ -146,18 +172,18 @@ def main(
         feature_models[feature_name].append(path)
 
     features = sorted(feature_models.keys())
-    print(f"Encontradas {len(features)} features em {model_dir}: {', '.join(features)}")
+    click.echo(f"Found {len(features)} target features in {model_dir}: {', '.join(features)}")
 
-    # 4. Inferência e cálculo da média para cada feature
+    # 4. Run inference and aggregate per feature
     results = {}
     for feature in features:
         paths = feature_models[feature]
+        click.echo(f"Processing feature '{feature}' ({len(paths)} models)...")
         all_probs = []
         all_thresholds = []
 
         for pkl_file in paths:
             with open(pkl_file, "rb") as f:
-                import pickle
                 artifact = pickle.load(f)
 
             probs, threshold = run_inference_on_model(artifact, embeddings, target_device)
@@ -173,7 +199,11 @@ def main(
             "pred": (mean_probs >= np.mean(all_thresholds)).astype(int),
         }
 
-    # 5. Exportação para CSV
+    # 5. Export results to CSV
+    output_dir = os.path.dirname(os.path.abspath(output_file))
+    if output_dir:
+        os.makedirs(output_dir, exist_ok=True)
+
     header = ["sequence_id", "sequence"]
     for feature in features:
         header.append(f"{feature}_prob_mean")
@@ -196,7 +226,10 @@ def main(
                     row.append(str(results[feature]['pred'][i]))
             writer.writerow(row)
 
-    print(f"Concluído! Predições salvas em {output_file}.")
+    click.echo("=" * 60)
+    click.echo(f"✓ Inference completed successfully! Predictions saved to: {output_file}")
+    click.echo(f"  Processed {len(records)} peptides across {len(features)} features.")
+    click.echo("=" * 60)
 
 
 if __name__ == "__main__":

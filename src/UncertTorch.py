@@ -49,13 +49,13 @@ def get_embeddings_with_cache(sequences, extractor, cache_file):
     if os.path.exists(cache_file):
         with np.load(cache_file) as cached:
             if 'sequence_hash' in cached and str(cached['sequence_hash']) == sequence_hash:
-                print(f"Loading cached embeddings from {cache_file}")
+                click.echo(f"Loading cached embeddings from {cache_file}")
                 return cached['embeddings']
 
     embeddings = np.asarray(extractor.embedding(sequences), dtype=float)
     os.makedirs(os.path.dirname(cache_file), exist_ok=True)
     np.savez_compressed(cache_file, embeddings=embeddings, sequence_hash=sequence_hash)
-    print(f"Saved embeddings to {cache_file}")
+    click.echo(f"Saved embeddings to {cache_file}")
     return embeddings
 
 
@@ -100,7 +100,7 @@ def upsert_csv_rows(output_dir, filename, columns, rows, key_columns,
         writer = csv.DictWriter(table_file, fieldnames=columns)
         writer.writeheader()
         writer.writerows(stored_rows.values())
-    print(f'Saved results to {table_path}')
+    click.echo(f'Saved results to {table_path}')
 
 
 def append_bootstrap_metrics(output_dir, name, seed, bootstrap_results):
@@ -301,54 +301,59 @@ def get_package_versions():
     return versions
 
 
-@click.command()
-@click.option('--train', required = True, help = "Training FASTA file with sequence labels in the FASTA IDs")
-@click.option('--test', required = True,  help = "Test FASTA file with sequence labels in the FASTA IDs")
-@click.option('--name', required = True,  help = "Project name")
-@click.option('--base-model', required = True, help = "Pre-trained model folder")
-@click.option('--seed', type=int, default=42, show_default=True, help="Random state")
-@click.option('--smote', is_flag=True, default=False, help="Enable SMOTE")
+@click.command(help="Run uncertainty estimation and model training across random seeds.")
+@click.option('--train', required=True, help="Training FASTA file with sequence labels in headers.")
+@click.option('--test', required=True, help="Test FASTA file with sequence labels in headers.")
+@click.option('--name', required=True, help="Project / property name.")
+@click.option('--base-model', required=True, help="Pre-trained base model or checkpoint directory.")
+@click.option('--seed', type=int, default=42, show_default=True, help="Random seed.")
+@click.option('--smote', is_flag=True, default=False, help="Enable SMOTE oversampling.")
 @click.option('--device', default='cuda' if torch.cuda.is_available() else 'cpu',
-              show_default=True, help='Device used for embedding extraction')
+              show_default=True, help="Device used for embedding extraction and training ('cuda' or 'cpu').")
 @click.option('--model-dir', default='saved_models', show_default=True,
-              help='Directory where the deployable model artifact is saved')
+              help="Directory where deployable model artifacts are saved.")
 @click.option('--embedding-cache-dir', default='embedding_cache', show_default=True,
-              help='Directory to cache raw train/test embeddings')
+              help="Directory to cache raw train/test embeddings.")
 @click.option('--output-dir', default='results', show_default=True,
-              help='Directory for evaluation plots')
-
+              help="Directory for evaluation metrics and plots.")
 def main(train, test, name, base_model, seed=42, smote=False,
          device='cuda' if torch.cuda.is_available() else 'cpu', model_dir='saved_models',
          embedding_cache_dir='embedding_cache', output_dir='results'):
-    #Hard-coded parameters
-    
-    HEADS = {
-    "linear": {
-        "lr": TorchLogisticRegression(max_iter=1000, class_weight='balanced', random_state=seed, device=device),
-        "param_grid":{'C': [0.01, 0.1, 1.0, 10.0]},
-        "n_jobs":26
-    },
-    "non-linear":{
-        "mlp":TorchMLPClassifier(hidden_layer_sizes=(64,), activation='relu', weight_decay=0.001, batch_size=32, max_iter=100, early_stopping=True, validation_fraction=0.2, random_state=seed, device=device),
-        "param_grid":{
-            "binary": {
-                'hidden_layer_sizes': [(32,), (64,), (128,), (64,32)],
-                'weight_decay': [0.0001, 0.001, 0.01],
-                'learning_rate': [0.001, 0.01]},
-            "multiclass":{
-                'hidden_layer_sizes': [(32,), (64,), (128,), (64,32)],
-                'weight_decay': [0.0001, 0.001, 0.01]}
-                    },
-        "n_jobs":26
-    }
-}
+    click.echo("=" * 60)
+    click.echo(f"PRIME Uncertainty Estimation Pipeline: {name}")
+    click.echo(f"• Seed: {seed} | SMOTE: {smote} | Device: {device}")
+    click.echo(f"• Train set: {train}")
+    click.echo(f"• Test set: {test}")
+    click.echo(f"• Base model: {base_model}")
+    click.echo(f"• Model output directory: {model_dir}")
+    click.echo("=" * 60)
 
-    #Load Data
-    DataObj = DataSet(
-        train = train,
-        test = test,
-        name = name)
-    DataObj.load(sample = False)
+    # Hard-coded parameters
+    HEADS = {
+        "linear": {
+            "lr": TorchLogisticRegression(max_iter=1000, class_weight='balanced', random_state=seed, device=device),
+            "param_grid": {'C': [0.01, 0.1, 1.0, 10.0]},
+            "n_jobs": 26
+        },
+        "non-linear": {
+            "mlp": TorchMLPClassifier(hidden_layer_sizes=(64,), activation='relu', weight_decay=0.001, batch_size=32, max_iter=100, early_stopping=True, validation_fraction=0.2, random_state=seed, device=device),
+            "param_grid": {
+                "binary": {
+                    'hidden_layer_sizes': [(32,), (64,), (128,), (64, 32)],
+                    'weight_decay': [0.0001, 0.001, 0.01],
+                    'learning_rate': [0.001, 0.01]},
+                "multiclass": {
+                    'hidden_layer_sizes': [(32,), (64,), (128,), (64, 32)],
+                    'weight_decay': [0.0001, 0.001, 0.01]}
+            },
+            "n_jobs": 26
+        }
+    }
+
+    # Load Data
+    click.echo(f"Loading and filtering dataset for {name}...")
+    DataObj = DataSet(train=train, test=test, name=name)
+    DataObj.load(sample=False)
     DataObj.clean()
 
     if not DataObj.train_seq:
@@ -360,29 +365,26 @@ def main(train, test, name, base_model, seed=42, smote=False,
     if set(np.unique(DataObj.test_id).tolist()) != {0.0, 1.0}:
         raise click.ClickException('Binary test labels must contain both 0 and 1 for ROC-AUC evaluation.')
 
+    click.echo(f"• Valid sequences: {len(DataObj.train_seq)} train, {len(DataObj.test_seq)} test.")
 
-    print("Try LoRA")
-    ExtratorESM = EmbedderLoRAESM(
-        path = base_model,
-        device = device
-    )
-    ExtratorESM.loadModel(tokenizer=EsmTokenizer, model_loader = EsmForMaskedLM)
+    click.echo(f"Loading ESM LoRA model from {base_model} ({device})...")
+    ExtratorESM = EmbedderLoRAESM(path=base_model, device=device)
+    ExtratorESM.loadModel(tokenizer=EsmTokenizer, model_loader=EsmForMaskedLM)
 
-    #Train classifiers
+    # Train classifiers
     train_cache = os.path.join(embedding_cache_dir, f'{name}_train_emb.npz')
     test_cache = os.path.join(embedding_cache_dir, f'{name}_test_emb.npz')
     train_embedded = get_embeddings_with_cache(DataObj.train_seq, ExtratorESM, train_cache)
     train_lables = DataObj.train_id
-    ModelSelectorObj = Coach(
-        train_emb = train_embedded,
-        train_labels = train_lables,
-        seed = seed)
+
+    click.echo(f"Training and selecting best classifier for seed {seed}...")
+    ModelSelectorObj = Coach(train_emb=train_embedded, train_labels=train_lables, seed=seed)
     ModelSelectorObj.preprocess()
-    ModelSelectorObj.select_binary_classifier(model_dict=HEADS, classifier_choice='auto', use_smote = smote)
+    ModelSelectorObj.select_binary_classifier(model_dict=HEADS, classifier_choice='auto', use_smote=smote)
 
     os.makedirs(model_dir, exist_ok=True)
     model_path = os.path.join(model_dir, f'{name}_seed_{seed}_model.pkl')
-    
+
     artifact = {
         'artifact_version': 1,
         'task_type': 'binary_classification',
@@ -409,11 +411,13 @@ def main(train, test, name, base_model, seed=42, smote=False,
     with open(temporary_model_path, 'wb') as model_file:
         pickle.dump(artifact, model_file)
     os.replace(temporary_model_path, model_path)
-    print(f"Saved deployable model artifact to {model_path}")
+    click.echo(f"Saved deployable model artifact to {model_path}")
 
+    click.echo("Evaluating model on test set...")
     test_pred, test_proba = ModelSelectorObj.predict(
         test_emb=get_embeddings_with_cache(DataObj.test_seq, ExtratorESM, test_cache),
-        test_labels=DataObj.test_id)
+        test_labels=DataObj.test_id
+    )
 
     test_labels = np.asarray(DataObj.test_id)
     metrics = {
@@ -427,10 +431,12 @@ def main(train, test, name, base_model, seed=42, smote=False,
         'mcc': float(matthews_corrcoef(test_labels, test_pred)),
         'confusion_matrix': confusion_matrix(test_labels, test_pred).tolist(),
     }
-    print({'seed': seed, 'test_metrics': metrics})
+    click.echo(f"Test metrics (seed {seed}): ROC-AUC={metrics['roc_auc']:.4f}, Accuracy={metrics['accuracy']:.4f}, F1={metrics['f1']:.4f}, MCC={metrics['mcc']:.4f}")
+
+    click.echo("Running bootstrap validation...")
     bootstrap_results = bootstrap_metrics(test_labels, test_pred, test_proba)
-    print({'seed': seed, 'test_bootstrap_95_ci_and_std': bootstrap_results})
     append_bootstrap_metrics(output_dir, name, seed, bootstrap_results)
+
     selected_models = list(ModelSelectorObj.trained_best_models)
     model_params = {
         model_name: model.get_params(deep=False)
@@ -456,10 +462,12 @@ def main(train, test, name, base_model, seed=42, smote=False,
         metrics=metrics,
     )
     aggregate_seed_outputs(output_dir, name)
+
     plot_dir = os.path.join(output_dir, name, f'seed_{seed}')
     plot_name = f'{name}_seed_{seed}'
     plot_binary_evaluation(test_labels, test_pred, test_proba, plot_dir, plot_name)
-    print(f"Saved evaluation plots to {plot_dir}")
+    click.echo(f"Saved evaluation plots to {plot_dir}")
+    click.echo(f"✓ Pipeline completed successfully for '{name}' (seed {seed}).")
 
 
 if __name__ == "__main__":
