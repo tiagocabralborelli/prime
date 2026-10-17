@@ -1,6 +1,0 @@
-[console_scripts]
-prime-predict = Predict:main
-prime-process = Clean:main
-prime-torchuncert = UncertTorch:main
-prime-train = Train:main
-prime-uncertainty = Uncert:main

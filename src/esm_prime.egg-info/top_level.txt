@@ -1,5 +1,0 @@
-Coach
-Embedder
-Loader
-Metrics
-Process
