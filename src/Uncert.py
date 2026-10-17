@@ -71,9 +71,12 @@ def upsert_csv_rows(output_dir, filename, columns, rows, key_columns,
             reader = csv.DictReader(table_file)
             existing_columns = reader.fieldnames or []
             if existing_columns != columns:
-                raise ValueError(
-                    f'Existing table has unexpected columns: {table_path}'
-                )
+                if set(existing_columns).issubset(set(columns)):
+                    pass
+                else:
+                    raise ValueError(
+                        f'Existing table has unexpected columns: {table_path}'
+                    )
             for existing_row in reader:
                 key = tuple(existing_row[column] for column in key_columns)
                 stored_rows[key] = existing_row
@@ -253,22 +256,30 @@ def aggregate_seed_outputs(output_dir, name):
         positive_rate = float(np.mean([
             int(row['predicted_label']) for row in rows
         ]))
+        prob_mean = float(np.mean(probabilities))
+        prob_std = float(np.std(probabilities, ddof=1)) if len(probabilities) > 1 else 0.0
+        t_mean = aggregate_row['threshold_mean']
+        t_std = aggregate_row['threshold_std']
         uncertainty_rows.append({
             'model_name': name,
             'sample_index': sample_index,
             'sequence': first_row['sequence'],
             'true_label': int(first_row['true_label']),
             'n_seeds': len(rows),
-            'probability_mean': float(np.mean(probabilities)),
-            'probability_std': float(np.std(probabilities, ddof=1)) if len(probabilities) > 1 else 0.0,
+            'probability_mean': prob_mean,
+            'probability_std': prob_std,
             'positive_prediction_rate': positive_rate,
             'prediction_disagreement_rate': min(positive_rate, 1.0 - positive_rate),
+            'threshold_mean': t_mean,
+            'threshold_std': t_std,
+            'threshold_margin': abs(prob_mean - t_mean),
         })
 
     uncertainty_columns = [
         'model_name', 'sample_index', 'sequence', 'true_label', 'n_seeds',
         'probability_mean', 'probability_std', 'positive_prediction_rate',
-        'prediction_disagreement_rate',
+        'prediction_disagreement_rate', 'threshold_mean', 'threshold_std',
+        'threshold_margin',
     ]
     upsert_csv_rows(
         output_dir,
