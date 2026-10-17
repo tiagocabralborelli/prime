@@ -17,5 +17,8 @@ venv/
 env/
 ENV/
 
+# Documentation build
+site/
+
 # Obsolete
 obsolete/

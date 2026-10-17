@@ -1,0 +1,32 @@
+site_name: PRIME Documentation
+site_description: Peptide Property Prediction & Uncertainty Estimation with ESM Language Models
+site_author: Tiago
+
+# Use 'material' if you install mkdocs-material (pip install mkdocs-material)
+# Defaults to 'readthedocs' which is built-in with mkdocs
+theme:
+  name: dracula
+  highlightjs: true
+  hljs_languages:
+    - bash
+    - python
+    - yaml
+
+nav:
+  - Home: index.md
+  - Getting Started:
+      - Installation: installation.md
+      - Quickstart Guide: quickstart.md
+  - CLI Reference:
+      - prime-process: cli/process.md
+      - prime-uncert: cli/uncert.md
+      - prime-predict: cli/predict.md
+  - Methodology:
+      - Methodology Overview: methodology.md
+
+markdown_extensions:
+  - admonition
+  - tables
+  - fenced_code
+  - toc:
+      permalink: true
